@@ -1,0 +1,31 @@
+{
+  "name": "p2p-ai-agents",
+  "version": "1.0.0",
+  "description": "Peer-to-Peer Communication System with AI Agents",
+  "main": "backend/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node backend/index.js",
+    "dev:backend": "nodemon backend/index.js",
+    "dev:webapp": "cd webapp && npm run dev",
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:webapp\""
+  },
+  "dependencies": {
+    "@libp2p/bootstrap": "^9.0.2",
+    "@libp2p/kad-dht": "^10.0.2",
+    "@libp2p/mdns": "^9.0.2",
+    "@libp2p/mplex": "^8.0.1",
+    "@libp2p/noise": "^12.0.1",
+    "@libp2p/tcp": "^8.0.2",
+    "@libp2p/websockets": "^7.0.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "libp2p": "^0.46.3",
+    "openai": "^4.20.0"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "nodemon": "^3.0.1"
+  }
+} 
