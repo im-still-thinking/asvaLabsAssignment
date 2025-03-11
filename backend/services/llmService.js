@@ -1,12 +1,21 @@
 import dotenv from 'dotenv'
+import fetch from 'node-fetch'
 import OpenAI from 'openai'
 
 dotenv.config()
 
+// Initialize OpenAI client
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 })
 
+// StarCoder configuration
+const HUGGINGFACE_API_URL = 'https://api-inference.huggingface.co/models/bigcode/starcoder2-15b'
+const HUGGINGFACE_API_KEY = process.env.HUGGINGFACE_API_KEY
+
+/**
+ * Process votes using LLM to analyze and provide recommendations
+ */
 async function processVotesWithLLM(votingData) {
   try {
     console.log('Processing votes with LLM:', votingData)
@@ -74,7 +83,6 @@ Format your response as a JSON object with the following structure:
       }
     }
     
-    // Add original voting data for reference
     result.originalVotes = votingData.votes
     result.changeType = votingData.changeType
     result.changeValue = votingData.changeValue
@@ -86,7 +94,10 @@ Format your response as a JSON object with the following structure:
   }
 }
 
-export async function processPromptWithLLM(prompt) {
+/**
+ * Process natural language prompts to extract change requests
+ */
+async function processPromptWithLLM(prompt) {
   try {
     const response = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
@@ -120,4 +131,112 @@ export async function processPromptWithLLM(prompt) {
   }
 }
 
-export { processVotesWithLLM }
+/**
+ * Generate code with StarCoder
+ */
+async function generateWithStarCoder(prompt) {
+  try {
+    console.log('Generating code with StarCoder...')
+    
+    if (!HUGGINGFACE_API_KEY) {
+      throw new Error('HUGGINGFACE_API_KEY is not set in environment variables')
+    }
+    
+    const response = await fetch(HUGGINGFACE_API_URL, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${HUGGINGFACE_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        inputs: prompt,
+        parameters: {
+          max_new_tokens: 2000,
+          temperature: 0.2,
+          top_p: 0.95,
+          do_sample: true,
+          return_full_text: false
+        }
+      })
+    })
+    
+    if (!response.ok) {
+      const errorText = await response.text()
+      throw new Error(`Hugging Face API error: ${response.status} - ${errorText}`)
+    }
+    
+    const result = await response.json()
+    
+    if (Array.isArray(result) && result.length > 0) {
+      return result[0].generated_text
+    } else {
+      throw new Error('Unexpected response format from Hugging Face API')
+    }
+  } catch (error) {
+    console.error('Error in generateWithStarCoder:', error)
+    throw error
+  }
+}
+
+/**
+ * Generate code with GPT-4o-mini as a fallback
+ */
+async function generateWithGPT4oMini(prompt) {
+  try {
+    console.log('Generating code with GPT-4o-mini...')
+    
+    if (!process.env.OPENAI_API_KEY) {
+      throw new Error('OPENAI_API_KEY is not set in environment variables')
+    }
+    
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        {
+          role: 'system',
+          content: 'You are a helpful assistant that specializes in generating code for web applications. Your task is to modify code files based on user requirements. Always provide complete file contents in your response, formatted as JSON.'
+        },
+        {
+          role: 'user',
+          content: prompt
+        }
+      ],
+      temperature: 0.2,
+      max_tokens: 4000
+    })
+    
+    if (response.choices && response.choices.length > 0) {
+      return response.choices[0].message.content
+    } else {
+      throw new Error('Unexpected response format from OpenAI API')
+    }
+  } catch (error) {
+    console.error('Error in generateWithGPT4oMini:', error)
+    throw error
+  }
+}
+
+/**
+ * Parse LLM output to extract JSON
+ */
+function parseLLMOutput(output) {
+  try {
+    const jsonMatch = output.match(/```json\n([\s\S]*?)\n```/) || 
+                      output.match(/```\n([\s\S]*?)\n```/) || 
+                      output.match(/({[\s\S]*})/)
+    
+    if (jsonMatch) {
+      return JSON.parse(jsonMatch[1])
+    }
+    
+    return JSON.parse(output)
+  } catch (error) {
+    console.error('Error parsing LLM output:', error)
+    throw new Error('Failed to parse LLM output as JSON')
+  }
+}
+
+export {
+  generateWithGPT4oMini, generateWithStarCoder, parseLLMOutput, processPromptWithLLM, processVotesWithLLM
+}
+

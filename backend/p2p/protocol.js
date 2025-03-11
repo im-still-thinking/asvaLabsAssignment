@@ -1,13 +1,12 @@
-// Message types for agent communication
 const MessageTypes = {
   VOTE_SUMMARY: 'vote_summary',
   POLICY_DECISION: 'policy_decision',
   CODE_CHANGE: 'code_change',
   CODE_APPLIED: 'code_applied',
-  AGENT_INFO: 'agent_info'
+  AGENT_INFO: 'agent_info',
+  SETTINGS_UPDATE: 'settings_update'
 }
 
-// Create a message object with the appropriate structure
 function createMessage(type, data, sender) {
   return {
     type,
@@ -17,7 +16,6 @@ function createMessage(type, data, sender) {
   }
 }
 
-// Validate incoming messages
 function validateMessage(message) {
   if (!message || typeof message !== 'object') {
     return false
@@ -34,4 +32,4 @@ function validateMessage(message) {
   return true
 }
 
-export { MessageTypes, createMessage, validateMessage } 
+export { MessageTypes, createMessage, validateMessage }

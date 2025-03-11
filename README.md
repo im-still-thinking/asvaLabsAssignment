@@ -8,10 +8,15 @@ The system consists of:
 
 1. **P2P Communication Layer**: Built with libp2p for agent communication
 2. **AI Agents**:
-   - Vote Agent: Processes and summarizes voting results
-   - Policy Agent: Evaluates vote summaries and makes decisions
-   - Code Agent: Generates and applies code changes
+   - Vote Agent: Processes and summarizes voting results (using GPT-4o-mini)
+   - Policy Agent: Evaluates vote summaries and makes decisions (using GPT-4o-mini)
+   - Code Agent: Generates and applies code changes (using StarCoder exclusively)
 3. **Web Application**: A Next.js app where users can vote on changes to the website's appearance
+
+## AI Models Used
+
+- **StarCoder**: A specialized code generation model used by the Code Agent for generating precise code changes
+- **GPT-4o-mini**: Used by the Vote and Policy Agents
 
 ## Setup Instructions
 
@@ -19,6 +24,8 @@ The system consists of:
 
 - Node.js (v14 or higher)
 - npm or yarn
+- OpenAI API key (for Vote and Policy Agents)
+- Hugging Face API key (for StarCoder access)
 
 ### Installation
 
@@ -43,6 +50,7 @@ The system consists of:
 4. Create a `.env` file in the root directory based on `.env.example`:
    ```
    OPENAI_API_KEY=your_openai_api_key_here
+   HUGGINGFACE_API_KEY=your_huggingface_api_key_here
    PORT=3001
    ```
 
@@ -71,10 +79,10 @@ The system consists of:
 1. Log in using one of the mock users (user1, user2, user3, user4, user5)
 2. Create a topic to propose a change to the website's color or font
 3. Vote on active topics
-4. After the 5-minute voting period, the system will:
+4. After the voting threshold is reached, the system will:
    - Process the votes using the Vote Agent
    - Evaluate the results using the Policy Agent
-   - If approved, generate and apply code changes using the Code Agent
+   - If approved, generate and apply code changes using the Code Agent (StarCoder)
    - Update the webapp to reflect the changes
 
 ## Project Structure
@@ -83,6 +91,7 @@ The system consists of:
   - `/agents`: AI agent implementations
   - `/p2p`: Peer-to-peer communication system
   - `/services`: Services for LLM integration, policy evaluation, and code generation
+    - `starcoderService.js`: Service for interacting with the StarCoder API
 - `/webapp`: Frontend code (TypeScript)
   - `/src/pages`: Next.js pages
   - `/src/components`: React components

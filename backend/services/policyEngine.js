@@ -1,5 +1,6 @@
 import dotenv from 'dotenv'
 import OpenAI from 'openai'
+import { parseLLMOutput } from './llmService.js'
 
 dotenv.config()
 
@@ -10,7 +11,7 @@ const openai = new OpenAI({
 async function evaluateWithPolicyEngine(voteSummary) {
   try {
     console.log('Evaluating with policy engine:', voteSummary)
-    
+
     const prompt = `
 You are a policy engine for a website that allows users to vote on changing the website's appearance.
 You need to evaluate a vote summary and decide whether to approve or reject the proposed change.
@@ -51,17 +52,13 @@ Format your response as a JSON object with the following structure:
 
     const content = response.choices[0].message.content
     let result
-    
+
     try {
-      // Extract JSON from the response
-      const jsonMatch = content.match(/```json\n([\s\S]*?)\n```/) || content.match(/({[\s\S]*})/)
-      const jsonString = jsonMatch ? jsonMatch[1] : content
-      result = JSON.parse(jsonString)
+      result = parseLLMOutput(content)
     } catch (err) {
       console.error('Error parsing LLM response:', err)
       console.log('Raw response:', content)
-      
-      // Fallback to a simple result
+
       result = {
         approved: false,
         justification: 'Error in processing policy decision',
@@ -70,10 +67,9 @@ Format your response as a JSON object with the following structure:
         summary: 'Failed to evaluate policy'
       }
     }
-    
-    // Add original vote summary for reference
+
     result.voteSummary = voteSummary
-    
+
     return result
   } catch (error) {
     console.error('Error in evaluateWithPolicyEngine:', error)
@@ -81,13 +77,14 @@ Format your response as a JSON object with the following structure:
   }
 }
 
+// This function is redundant with the LLM-based policy engine
+// and can be removed if not needed for fallback purposes
 export async function evaluatePolicy(voteSummary) {
   try {
     console.log('Evaluating policy for:', voteSummary)
-    
-    // First check if the change type is allowed
+
     const allowedChangeTypes = ['color', 'font']
-    
+
     if (!allowedChangeTypes.includes(voteSummary.changeType)) {
       return {
         approved: false,
@@ -95,10 +92,8 @@ export async function evaluatePolicy(voteSummary) {
         voteSummary
       }
     }
-    
-    // For color changes, validate the format
+
     if (voteSummary.changeType === 'color') {
-      // Check if it's a valid hex color
       const isValidHex = /^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/.test(voteSummary.changeValue)
       if (!isValidHex) {
         return {
@@ -108,18 +103,14 @@ export async function evaluatePolicy(voteSummary) {
         }
       }
     }
-    
-    // For font changes, validate that it's a reasonable font family string
+
     if (voteSummary.changeType === 'font') {
-      // Check if it contains at least one font name and a fallback
       const hasFallback = voteSummary.changeValue.includes(',')
       if (!hasFallback) {
-        // Add a fallback if none exists
         voteSummary.changeValue = `${voteSummary.changeValue}, sans-serif`
       }
     }
-    
-    // Check the vote recommendation
+
     if (voteSummary.recommendation === 'approve') {
       return {
         approved: true,

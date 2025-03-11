@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 :root {
-  --primary-color: #3b82f6;
+  --primary-color: #800080; /* Changed to purple */
   --font-family: 'Arial, sans-serif';
 }
 
@@ -17,7 +17,8 @@ body {
   }
   
   .btn-primary {
-    @apply bg-blue-500 text-white hover:bg-blue-600 disabled:bg-blue-300;
+    background-color: var(--primary-color);
+    @apply text-white hover:bg-opacity-90 disabled:opacity-50;
   }
   
   .btn-secondary {
@@ -29,7 +30,10 @@ body {
   }
   
   .input {
-    @apply w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500;
+    @apply w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2;
+    &:focus {
+      --tw-ring-color: var(--primary-color);
+    }
   }
   
   .label {
@@ -39,4 +43,4 @@ body {
   .card {
     @apply bg-white rounded-lg shadow-md p-6;
   }
-} 
+}

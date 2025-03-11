@@ -1,12 +1,13 @@
-import { useState } from 'react';
 import { useApp } from '@/context/AppContext';
+import { useState } from 'react';
 
 export default function Login() {
   const { login } = useApp();
   const [username, setUsername] = useState('');
   const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!username) {
@@ -14,14 +15,17 @@ export default function Login() {
       return;
     }
     
-    // Check if username is one of the mock users
-    const validUsernames = ['user1', 'user2', 'user3', 'user4', 'user5'];
-    if (!validUsernames.includes(username)) {
-      setError(`Invalid username. Try one of: ${validUsernames.join(', ')}`);
-      return;
-    }
+    setIsLoading(true);
+    setError('');
     
-    login(username);
+    try {
+      await login(username);
+      // Login successful - AppContext will update the state
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Login failed. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -32,7 +36,7 @@ export default function Login() {
             Sign in to P2P AI Agents
           </h2>
           <p className="mt-2 text-center text-sm text-gray-600">
-            Use one of the mock users: user1, user2, user3, user4, user5
+            Enter your username to connect to the P2P network
           </p>
         </div>
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
@@ -50,6 +54,7 @@ export default function Login() {
                 placeholder="Username"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
+                disabled={isLoading}
               />
             </div>
           </div>
@@ -62,8 +67,9 @@ export default function Login() {
             <button
               type="submit"
               className="btn btn-primary w-full"
+              disabled={isLoading}
             >
-              Sign in
+              {isLoading ? 'Signing in...' : 'Sign in'}
             </button>
           </div>
         </form>

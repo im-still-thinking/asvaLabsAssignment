@@ -1,6 +1,8 @@
 import { useApp } from '@/context/AppContext';
 import { ReactNode, useEffect, useState } from 'react';
+import P2PInfoPanel from './P2PInfoPanel';
 import TopicCreationSidebar from './TopicCreationSidebar';
+import TopicsList from './TopicsList';
 
 interface LayoutProps {
   children: ReactNode;
@@ -9,6 +11,7 @@ interface LayoutProps {
 export default function Layout({ children }: LayoutProps) {
   const { settings, currentUser, logout } = useApp();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [topicsListOpen, setTopicsListOpen] = useState(true);
 
   // Apply settings to CSS variables
   useEffect(() => {
@@ -17,19 +20,22 @@ export default function Layout({ children }: LayoutProps) {
   }, [settings]);
 
   return (
-    <div className="min-h-screen bg-gray-100" style={{ fontFamily: settings.fontFamily }}>
-      {/* Header */}
-      <header className="bg-white shadow-sm fixed top-0 left-0 right-0 z-10">
-        <div className="container mx-auto px-4 py-3 flex justify-between items-center">
-          <h1 className="text-xl font-bold" style={{ color: settings.primaryColor }}>
+    <div className="min-h-screen bg-gray-100 flex flex-col" style={{ fontFamily: settings.fontFamily }}>
+      {/* Header - Top Horizontal View */}
+      <header 
+        className="bg-white shadow-sm z-10 py-3 px-4"
+        style={{ backgroundColor: settings.primaryColor, color: 'white' }}
+      >
+        <div className="container mx-auto flex justify-between items-center">
+          <h1 className="text-xl font-bold">
             P2P AI Agents
           </h1>
           {currentUser && (
             <div className="flex items-center gap-4">
-              <span className="text-sm text-gray-600 hidden md:inline">
+              <span className="text-sm hidden md:inline">
                 @{currentUser.username} ({currentUser.followers} followers)
               </span>
-              <button onClick={logout} className="btn-secondary btn-sm">
+              <button onClick={logout} className="btn-secondary btn-sm text-white bg-opacity-20 hover:bg-opacity-30">
                 Logout
               </button>
             </div>
@@ -37,24 +43,67 @@ export default function Layout({ children }: LayoutProps) {
         </div>
       </header>
 
-      {/* Main content */}
-      <div className="pt-16 pb-16">
-        <div className="container mx-auto px-4 md:px-6 max-w-4xl">
-          {children}
-        </div>
+      {/* Main content area with sidebar */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Main content - Center View */}
+        <main className="flex-1 overflow-auto p-4">
+          <div className="container mx-auto max-w-4xl">
+            {children}
+          </div>
+        </main>
+
+        {/* Topics Sidebar - Right Vertical View */}
+        {currentUser && (
+          <aside 
+            className={`bg-white shadow-lg w-80 transition-all duration-300 flex flex-col ${
+              topicsListOpen ? 'translate-x-0' : 'translate-x-full'
+            }`}
+          >
+            <div className="p-4 border-b flex justify-between items-center">
+              <h2 className="font-bold" style={{ color: settings.primaryColor }}>Topics</h2>
+              <button 
+                onClick={() => setTopicsListOpen(false)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
+                </svg>
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-auto p-4">
+              <button 
+                onClick={() => setSidebarOpen(true)}
+                className="w-full mb-4 btn btn-primary"
+                style={{ backgroundColor: settings.primaryColor }}
+              >
+                Create New Topic
+              </button>
+              
+              <TopicsList />
+            </div>
+          </aside>
+        )}
+        
+        {/* Toggle button for sidebar when closed */}
+        {currentUser && !topicsListOpen && (
+          <button
+            onClick={() => setTopicsListOpen(true)}
+            className="fixed right-0 top-1/2 transform -translate-y-1/2 bg-white p-2 rounded-l-md shadow-md"
+            style={{ color: settings.primaryColor }}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+            </svg>
+          </button>
+        )}
       </div>
 
-      {/* Create topic floating button */}
+      {/* P2P Info Panel - Bottom Horizontal View */}
       {currentUser && (
-        <button 
-          onClick={() => setSidebarOpen(true)}
-          className="fixed bottom-6 right-6 w-14 h-14 rounded-full bg-blue-500 text-white shadow-lg flex items-center justify-center hover:bg-blue-600 transition-colors"
-          style={{ backgroundColor: settings.primaryColor }}
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-        </button>
+        <div className="border-t">
+          <P2PInfoPanel />
+        </div>
       )}
 
       {/* Topic creation sidebar */}
@@ -62,16 +111,6 @@ export default function Layout({ children }: LayoutProps) {
         isOpen={sidebarOpen} 
         onClose={() => setSidebarOpen(false)} 
       />
-
-      {/* Footer */}
-      <footer className="bg-white border-t py-4 fixed bottom-0 left-0 right-0">
-        <div className="container mx-auto px-4 text-center text-gray-500 text-xs">
-          <p>P2P Communication System with AI Agents</p>
-          <p className="mt-1">
-            Current settings: Color: {settings.primaryColor}, Font: {settings.fontFamily}
-          </p>
-        </div>
-      </footer>
     </div>
   );
 } 

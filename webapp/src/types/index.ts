@@ -19,7 +19,7 @@ export interface Topic {
   title: string;
   description: string;
   createdAt: Date;
-  endTime: Date;
+  endTime?: Date;
   votes: Vote[];
   status: 'active' | 'processing' | 'approved' | 'rejected' | 'error' | 'completed';
   changeType: 'color' | 'font';
@@ -31,4 +31,19 @@ export interface Topic {
 export interface AppSettings {
   primaryColor: string;
   fontFamily: string;
+}
+
+// P2P Message type
+export interface P2PMessage {
+  id?: string;
+  type: string;
+  content: string;
+  timestamp: number;
+}
+
+// P2P Info type
+export interface P2PInfo {
+  peerId: string;
+  peers: string[];
+  messages: P2PMessage[];
 } 

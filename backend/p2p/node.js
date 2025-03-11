@@ -12,12 +12,12 @@ class P2PNode {
     this.peerId = options.peerId
     this.agentType = options.agentType || 'generic'
     this.messageHandlers = new Map()
+    this.wildcardHandlers = []
     this.node = null
   }
 
   async init() {
     try {
-      // Create a libp2p node
       this.node = await createLibp2p({
         addresses: {
           listen: ['/ip4/0.0.0.0/tcp/0']
@@ -46,15 +46,12 @@ class P2PNode {
         dht: kadDHT()
       })
 
-      // Set up event listeners
       this.node.addEventListener('peer:discovery', (evt) => {
         console.log(`Discovered peer: ${evt.detail.id.toString()}`)
       })
 
-      // Fix the peer:connect event handler to correctly access the peer ID
       this.node.addEventListener('peer:connect', (evt) => {
         try {
-          // The evt.detail appears to be the peer ID itself
           if (evt.detail && typeof evt.detail.toString === 'function') {
             console.log(`Connected to peer: ${evt.detail.toString()}`);
           } else {
@@ -66,7 +63,6 @@ class P2PNode {
         }
       });
 
-      // Handle protocol for agent communication
       await this.node.handle('/agent/1.0.0', async ({ stream, connection }) => {
         const decoder = new TextDecoder()
         let message = ''
@@ -79,12 +75,15 @@ class P2PNode {
           const parsedMessage = JSON.parse(message)
           console.log(`Received message from ${connection.remotePeer.toString()}:`, parsedMessage)
           
-          // Process the message based on its type
+          for (const handler of this.wildcardHandlers) {
+            await handler(parsedMessage, connection.remotePeer)
+          }
+          
           if (this.messageHandlers.has(parsedMessage.type)) {
             const handler = this.messageHandlers.get(parsedMessage.type)
             await handler(parsedMessage, connection.remotePeer)
           } else {
-            console.log(`No handler for message type: ${parsedMessage.type}`)
+            console.log(`No specific handler for message type: ${parsedMessage.type}`)
           }
         } catch (err) {
           console.error('Error handling message:', err)
@@ -103,10 +102,8 @@ class P2PNode {
 
   async sendMessage(peerId, message) {
     try {
-      // Convert string peerId to PeerId object if needed
       let peerIdObj = peerId;
       if (typeof peerId === 'string') {
-        // Import PeerId from libp2p
         const { peerIdFromString } = await import('@libp2p/peer-id');
         peerIdObj = peerIdFromString(peerId);
       }
@@ -126,7 +123,11 @@ class P2PNode {
   }
 
   registerMessageHandler(type, handler) {
-    this.messageHandlers.set(type, handler)
+    if (type === '*') {
+      this.wildcardHandlers.push(handler)
+    } else {
+      this.messageHandlers.set(type, handler)
+    }
   }
 
   async broadcastMessage(message) {
@@ -138,6 +139,10 @@ class P2PNode {
     }
     
     await Promise.allSettled(promises)
+    
+    for (const handler of this.wildcardHandlers) {
+      await handler(message, this.node.peerId)
+    }
   }
 
   async stop() {

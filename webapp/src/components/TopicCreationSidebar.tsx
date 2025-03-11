@@ -1,5 +1,5 @@
-import { useState } from 'react';
 import { useApp } from '@/context/AppContext';
+import { useState } from 'react';
 
 interface TopicCreationSidebarProps {
   isOpen: boolean;
@@ -7,7 +7,7 @@ interface TopicCreationSidebarProps {
 }
 
 export default function TopicCreationSidebar({ isOpen, onClose }: TopicCreationSidebarProps) {
-  const { createTopicFromNaturalLanguage } = useApp();
+  const { createTopicFromNaturalLanguage, settings } = useApp();
   const [prompt, setPrompt] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -49,11 +49,13 @@ export default function TopicCreationSidebar({ isOpen, onClose }: TopicCreationS
       ></div>
       
       {/* Sidebar */}
-      <div className="absolute top-0 right-0 bottom-0 w-full max-w-md bg-white shadow-lg transform transition-transform duration-300 ease-in-out"
-           style={{ transform: isOpen ? 'translateX(0)' : 'translateX(100%)' }}>
+      <div 
+        className="absolute top-0 right-0 bottom-0 w-full max-w-md bg-white shadow-lg transform transition-transform duration-300 ease-in-out"
+        style={{ transform: isOpen ? 'translateX(0)' : 'translateX(100%)' }}
+      >
         <div className="p-6 h-full flex flex-col">
           <div className="flex justify-between items-center mb-6">
-            <h2 className="text-xl font-bold">Propose a Change</h2>
+            <h2 className="text-xl font-bold" style={{ color: settings.primaryColor }}>Create New Topic</h2>
             <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -96,6 +98,7 @@ export default function TopicCreationSidebar({ isOpen, onClose }: TopicCreationS
                 type="submit"
                 className="w-full btn btn-primary"
                 disabled={isSubmitting}
+                style={{ backgroundColor: settings.primaryColor }}
               >
                 {isSubmitting ? 'Processing...' : 'Create Topic'}
               </button>

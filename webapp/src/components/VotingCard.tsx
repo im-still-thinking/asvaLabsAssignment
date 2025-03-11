@@ -1,31 +1,42 @@
-import { useState, useEffect } from 'react';
 import { useApp } from '@/context/AppContext';
 import { Topic } from '@/types';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import {
+    ColorPreview,
+    ProgressBar,
+    SplitVoteBar,
+    StatusBadge,
+    StatusMessage
+} from './shared/VotingComponents';
 
 interface VotingCardProps {
   topic: Topic;
 }
 
-export default function VotingCard({ topic }: VotingCardProps) {
-  const { castVote, currentUser } = useApp();
+function VotingCard({ topic }: VotingCardProps) {
+  const { castVote, currentUser, votingConfig } = useApp();
   const [userVote, setUserVote] = useState<'yes' | 'no' | null>(null);
-  const [timeRemaining, setTimeRemaining] = useState<number>(0);
-  const [secondsRemaining, setSecondsRemaining] = useState<number>(0);
+  const [elapsedTime, setElapsedTime] = useState<number>(0);
+  const [maxTimePercentage, setMaxTimePercentage] = useState<number>(100);
 
-  // Check if user has already voted
-  const existingVote = topic.votes.find(
-    (v) => v.userId === currentUser?.id
+  // Memoize existing vote check
+  const existingVote = useMemo(() => 
+    topic.votes.find(v => v.userId === currentUser?.id),
+    [topic.votes, currentUser?.id]
   );
 
-  // Update timer every second
+  // Update elapsed time every second (for the fallback timer)
   useEffect(() => {
+    if (topic.status !== 'active') return;
+    
     const updateTimer = () => {
       const now = new Date();
-      const endTime = new Date(topic.endTime);
-      const remaining = Math.max(0, endTime.getTime() - now.getTime());
+      const createdAt = new Date(topic.createdAt);
+      const elapsed = now.getTime() - createdAt.getTime();
+      const percentage = Math.min(100, (elapsed / votingConfig.MAX_VOTING_TIME) * 100);
       
-      setTimeRemaining(remaining);
-      setSecondsRemaining(Math.floor(remaining / 1000));
+      setElapsedTime(elapsed);
+      setMaxTimePercentage(percentage);
     };
     
     // Update immediately
@@ -36,43 +47,45 @@ export default function VotingCard({ topic }: VotingCardProps) {
     
     // Clean up interval on unmount
     return () => clearInterval(interval);
-  }, [topic.endTime]);
+  }, [topic.createdAt, topic.status, votingConfig.MAX_VOTING_TIME]);
 
-  // Calculate vote counts
-  const yesVotes = topic.votes.filter((v) => v.vote === 'yes').length;
-  const noVotes = topic.votes.filter((v) => v.vote === 'no').length;
-  const totalVotes = topic.votes.length;
+  // Memoize vote counts and calculations
+  const voteStats = useMemo(() => {
+    const yesVotes = topic.votes.filter((v) => v.vote === 'yes').length;
+    const noVotes = topic.votes.filter((v) => v.vote === 'no').length;
+    const totalVotes = topic.votes.length;
+    const votesProgress = Math.min(100, (totalVotes / votingConfig.MIN_VOTES_THRESHOLD) * 100);
+    const yesPercentage = totalVotes > 0 ? (yesVotes / totalVotes) * 100 : 0;
+    const approvalStatus = yesPercentage >= votingConfig.APPROVAL_PERCENTAGE ? 'passing' : 'failing';
+    
+    return {
+      yesVotes,
+      noVotes,
+      totalVotes,
+      votesProgress,
+      yesPercentage,
+      approvalStatus
+    };
+  }, [topic.votes, votingConfig.MIN_VOTES_THRESHOLD, votingConfig.APPROVAL_PERCENTAGE]);
 
-  const handleVote = (vote: 'yes' | 'no') => {
+  // Memoize formatted date
+  const formattedDate = useMemo(() => {
+    const d = new Date(topic.createdAt);
+    return d.toLocaleString();
+  }, [topic.createdAt]);
+
+  // Memoize time display
+  const timeDisplay = useMemo(() => {
+    const minutes = Math.floor(elapsedTime / 60000);
+    const seconds = Math.floor((elapsedTime % 60000) / 1000);
+    return `${minutes}m ${seconds}s`;
+  }, [elapsedTime]);
+
+  // Use callback for vote handler
+  const handleVote = useCallback((vote: 'yes' | 'no') => {
     castVote(topic.id, vote);
     setUserVote(vote);
-  };
-
-  // Format the creation date
-  const formatDate = (date: Date) => {
-    const d = new Date(date);
-    return d.toLocaleString();
-  };
-
-  // Get status badge color and text
-  const getStatusBadge = () => {
-    switch (topic.status) {
-      case 'active':
-        return { color: 'bg-blue-100 text-blue-800', text: 'Active' };
-      case 'processing':
-        return { color: 'bg-yellow-100 text-yellow-800', text: 'Processing' };
-      case 'approved':
-        return { color: 'bg-green-100 text-green-800', text: 'Approved' };
-      case 'rejected':
-        return { color: 'bg-red-100 text-red-800', text: 'Rejected' };
-      case 'error':
-        return { color: 'bg-gray-100 text-gray-800', text: 'Error' };
-      default:
-        return { color: 'bg-gray-100 text-gray-800', text: topic.status };
-    }
-  };
-
-  const statusBadge = getStatusBadge();
+  }, [castVote, topic.id]);
 
   return (
     <div className="bg-white rounded-lg shadow overflow-hidden">
@@ -82,12 +95,10 @@ export default function VotingCard({ topic }: VotingCardProps) {
           <div>
             <h3 className="font-medium text-lg">{topic.title}</h3>
             <p className="text-sm text-gray-500">
-              Proposed by @user{topic.createdBy} • {formatDate(topic.createdAt)}
+              Proposed by @user{topic.createdBy} • {formattedDate}
             </p>
           </div>
-          <span className={`text-xs px-2 py-1 rounded-full ${statusBadge.color}`}>
-            {statusBadge.text}
-          </span>
+          <StatusBadge status={topic.status} />
         </div>
       </div>
       
@@ -100,31 +111,60 @@ export default function VotingCard({ topic }: VotingCardProps) {
           <span className="text-sm font-medium">
             Change {topic.changeType} to: {topic.changeValue}
           </span>
-          {topic.changeType === 'color' && (
-            <div className="mt-1 flex items-center gap-2">
-              <span className="text-xs text-gray-500">Preview:</span>
-              <div
-                className="w-4 h-4 rounded-full border border-gray-300"
-                style={{ backgroundColor: topic.changeValue }}
-              ></div>
-            </div>
-          )}
+          {topic.changeType === 'color' && <ColorPreview color={topic.changeValue} />}
         </div>
         
-        {/* Timer */}
+        {/* Voting Progress */}
         {topic.status === 'active' && (
-          <div className="mb-4">
-            <div className="flex justify-between text-sm text-gray-500 mb-1">
-              <span>Time remaining:</span>
-              <span>{secondsRemaining}s</span>
+          <div className="mb-4 space-y-3">
+            {/* Votes count progress */}
+            <div>
+              <div className="flex justify-between text-sm text-gray-500 mb-1">
+                <span>Votes collected:</span>
+                <span>{voteStats.totalVotes} / {votingConfig.MIN_VOTES_THRESHOLD} minimum</span>
+              </div>
+              <ProgressBar 
+                value={voteStats.totalVotes} 
+                maxValue={votingConfig.MIN_VOTES_THRESHOLD} 
+              />
             </div>
-            <div className="w-full bg-gray-200 rounded-full h-2">
-              <div
-                className="bg-blue-600 h-2 rounded-full"
-                style={{
-                  width: `${(timeRemaining / (30 * 1000)) * 100}%`,
-                }}
-              ></div>
+            
+            {/* Approval threshold progress */}
+            <div>
+              <div className="flex justify-between text-sm text-gray-500 mb-1">
+                <span>Approval status:</span>
+                <span className={voteStats.approvalStatus === 'passing' ? 'text-green-600' : 'text-red-600'}>
+                  {voteStats.approvalStatus === 'passing' ? 'Passing' : 'Failing'} 
+                  ({voteStats.yesPercentage.toFixed(0)}% yes, {votingConfig.APPROVAL_PERCENTAGE}% needed)
+                </span>
+              </div>
+              <SplitVoteBar 
+                yesVotes={voteStats.yesVotes} 
+                noVotes={voteStats.noVotes} 
+              />
+              <div className="w-full relative h-1">
+                <div 
+                  className="absolute top-0 h-3 border-l-2 border-gray-500" 
+                  style={{ left: `${votingConfig.APPROVAL_PERCENTAGE}%` }}
+                />
+              </div>
+            </div>
+            
+            {/* Fallback timer */}
+            <div>
+              <div className="flex justify-between text-sm text-gray-500 mb-1">
+                <span>Time elapsed:</span>
+                <span>{timeDisplay}</span>
+              </div>
+              <ProgressBar 
+                value={maxTimePercentage} 
+                maxValue={100} 
+                colorClass="bg-gray-400" 
+                height="h-1" 
+              />
+              <p className="text-xs text-gray-400 mt-1">
+                Auto-processing after {Math.floor(votingConfig.MAX_VOTING_TIME / 60000)} minutes of inactivity
+              </p>
             </div>
           </div>
         )}
@@ -134,25 +174,13 @@ export default function VotingCard({ topic }: VotingCardProps) {
           <div className="flex justify-between text-sm mb-1">
             <span>Current votes:</span>
             <span>
-              {yesVotes} Yes / {noVotes} No ({totalVotes} total)
+              {voteStats.yesVotes} Yes / {voteStats.noVotes} No ({voteStats.totalVotes} total)
             </span>
           </div>
-          {totalVotes > 0 && (
-            <div className="w-full bg-gray-200 rounded-full h-2 flex">
-              <div
-                className="bg-green-500 h-2 rounded-l-full"
-                style={{
-                  width: `${(yesVotes / totalVotes) * 100}%`,
-                }}
-              ></div>
-              <div
-                className="bg-red-500 h-2 rounded-r-full"
-                style={{
-                  width: `${(noVotes / totalVotes) * 100}%`,
-                }}
-              ></div>
-            </div>
-          )}
+          <SplitVoteBar 
+            yesVotes={voteStats.yesVotes} 
+            noVotes={voteStats.noVotes} 
+          />
         </div>
       </div>
       
@@ -167,7 +195,8 @@ export default function VotingCard({ topic }: VotingCardProps) {
                   ? 'bg-green-500 text-white'
                   : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
               }`}
-              disabled={timeRemaining === 0}
+              disabled={!!existingVote}
+              aria-label="Vote Yes"
             >
               Vote Yes
             </button>
@@ -178,7 +207,8 @@ export default function VotingCard({ topic }: VotingCardProps) {
                   ? 'bg-red-500 text-white'
                   : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
               }`}
-              disabled={timeRemaining === 0}
+              disabled={!!existingVote}
+              aria-label="Vote No"
             >
               Vote No
             </button>
@@ -191,30 +221,10 @@ export default function VotingCard({ topic }: VotingCardProps) {
           </div>
         )}
         
-        {timeRemaining === 0 && topic.status === 'active' && (
-          <div className="text-center text-sm font-medium text-blue-600">
-            Voting has ended. Processing results...
-          </div>
-        )}
-        
-        {topic.status === 'approved' && (
-          <div className="text-center text-sm font-medium text-green-600">
-            This change has been approved and applied!
-          </div>
-        )}
-        
-        {topic.status === 'rejected' && (
-          <div className="text-center text-sm font-medium text-red-600">
-            This change was rejected by the policy engine.
-          </div>
-        )}
-        
-        {topic.status === 'error' && (
-          <div className="text-center text-sm font-medium text-gray-600">
-            There was an error processing this topic.
-          </div>
-        )}
+        <StatusMessage status={topic.status} variant="card" />
       </div>
     </div>
   );
-} 
+}
+
+export default memo(VotingCard); 

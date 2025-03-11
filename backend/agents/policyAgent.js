@@ -10,12 +10,10 @@ class PolicyAgent {
   async init() {
     await this.node.init()
     
-    // Register message handlers
     this.node.registerMessageHandler(MessageTypes.AGENT_INFO, this.handleAgentInfo.bind(this))
     this.node.registerMessageHandler(MessageTypes.VOTE_SUMMARY, this.handleVoteSummary.bind(this))
     this.node.registerMessageHandler(MessageTypes.CODE_APPLIED, this.handleCodeApplied.bind(this))
     
-    // Broadcast agent info
     setTimeout(() => {
       this.broadcastAgentInfo()
     }, 5000)
@@ -33,10 +31,8 @@ class PolicyAgent {
   async handleVoteSummary(message) {
     console.log('Received vote summary:', message.data)
     
-    // Evaluate the vote summary using the policy engine
     const decision = await evaluateWithPolicyEngine(message.data)
     
-    // Broadcast the policy decision
     const policyMessage = createMessage(
       MessageTypes.POLICY_DECISION,
       decision,
@@ -45,7 +41,6 @@ class PolicyAgent {
     
     await this.node.broadcastMessage(policyMessage)
     
-    // If approved, send to code agent
     if (decision.approved && this.codeAgentPeerId) {
       const codeChangeRequest = createMessage(
         MessageTypes.CODE_CHANGE,
@@ -64,7 +59,6 @@ class PolicyAgent {
 
   async handleCodeApplied(message) {
     console.log('Code changes applied:', message.data)
-    // This agent doesn't need to do anything with code applied messages
   }
 
   async broadcastAgentInfo() {
