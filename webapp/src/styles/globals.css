@@ -3,12 +3,14 @@
 @tailwind utilities;
 
 :root {
-  --primary-color: #800080; /* Changed to purple */
-  --font-family: 'Arial, sans-serif';
+  --primary-color: pink; /* Changed to pink */
+  --font-family: 'Product Sans', sans-serif; /* Updated font family */
+  --opacity: 1; /* Set opacity to opaque */
 }
 
 body {
   font-family: var(--font-family);
+  opacity: var(--opacity); /* Apply the opacity setting */
 }
 
 @layer components {

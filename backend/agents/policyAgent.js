@@ -1,4 +1,4 @@
-import { P2PNode, MessageTypes, createMessage } from '../p2p/index.js'
+import { MessageTypes, P2PNode, createMessage } from '../p2p/index.js'
 import { evaluateWithPolicyEngine } from '../services/policyEngine.js'
 
 class PolicyAgent {
@@ -58,7 +58,12 @@ class PolicyAgent {
   }
 
   async handleCodeApplied(message) {
-    console.log('Code changes applied:', message.data)
+    console.log('PolicyAgent: Code changes applied message received:', {
+      changeType: message.data.changeType,
+      changeValue: message.data.changeValue,
+      success: message.data.success,
+      sender: message.sender
+    });
   }
 
   async broadcastAgentInfo() {

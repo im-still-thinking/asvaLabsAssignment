@@ -38,7 +38,6 @@ class P2PNode {
           }),
           bootstrap({
             list: [
-              // Add bootstrap nodes if needed
               '/ip4/104.131.131.82/tcp/4001/p2p/QmaCpDMGvV2BGHeYERUEnRQAwe3N8SzbUtfsmvsqQLuvuJ'
             ]
           })

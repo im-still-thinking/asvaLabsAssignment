@@ -22,20 +22,47 @@ class CodeAgent {
     return this
   }
 
+
   async handleCodeChange(message) {
     console.log('Received code change request:', message.data)
     
-    const result = await generateCode(message.data)
-    
-    // Update in-memory settings regardless of code generation success
-    // This ensures the UI updates even if file changes fail
-    if (message.data.changeType === 'color') {
-      this.globalSettings.primaryColor = message.data.changeValue
-    } else if (message.data.changeType === 'font') {
-      this.globalSettings.fontFamily = message.data.changeValue
+    try {
+      const result = await generateCode(message.data)
+      console.log('Code generation result:', result)
+      
+      if (result.settingsUpdates && Object.keys(result.settingsUpdates).length > 0) {
+        Object.assign(this.globalSettings, result.settingsUpdates)
+        console.log('Updated global settings based on LLM recommendations:', this.globalSettings)
+      } else {
+        console.log('No settings updates were provided by the LLM')
+      }
+      
+      await this.broadcastSettingsUpdate()
+      
+      await this.broadcastCodeApplied(message.data, result)
+      
+      return result
+    } catch (error) {
+      console.error('Error handling code change:', error)
+      
+      const errorMessage = createMessage(
+        MessageTypes.CODE_ERROR,
+        {
+          changeType: message.data.changeType,
+          changeValue: message.data.changeValue,
+          error: error.message
+        },
+        this.node.node.peerId.toString()
+      )
+      
+      await this.node.broadcastMessage(errorMessage)
+      
+      throw error
     }
-    
-    // Broadcast settings update to all clients via a special message type
+  }
+  
+
+  async broadcastSettingsUpdate() {
     const settingsUpdateMessage = createMessage(
       MessageTypes.SETTINGS_UPDATE,
       this.globalSettings,
@@ -44,25 +71,44 @@ class CodeAgent {
     
     await this.node.broadcastMessage(settingsUpdateMessage)
     console.log('Settings update message broadcasted')
+  }
+  
 
-    // Broadcast code applied message
+  async broadcastCodeApplied(changeRequest, result) {
+    console.log('Broadcasting code applied message with data:', {
+      changeType: changeRequest.changeType,
+      changeValue: changeRequest.changeValue,
+      success: result.success
+    });
+    
+    const messageData = {
+      changeType: changeRequest.changeType,
+      changeValue: changeRequest.changeValue,
+      files: result.files,
+      success: result.success,
+      settings: this.globalSettings,
+      explanation: result.explanation
+    };
+    
     const codeAppliedMessage = createMessage(
       MessageTypes.CODE_APPLIED,
-      {
-        changeType: message.data.changeType,
-        changeValue: message.data.changeValue,
-        files: result.files,
-        success: result.success,
-        settings: this.globalSettings // Include settings in the code applied message
-      },
+      messageData,
       this.node.node.peerId.toString()
-    )
+    );
     
-    await this.node.broadcastMessage(codeAppliedMessage)
-    console.log('Code applied message broadcasted')
+    await this.node.broadcastMessage(codeAppliedMessage);
+    console.log('Code applied message broadcasted');
     
-    return result
+
+    if (typeof global.updateTopicStatusFromCodeApplied === 'function') {
+      try {
+        global.updateTopicStatusFromCodeApplied(messageData);
+      } catch (error) {
+        console.error('Error directly updating topic status:', error);
+      }
+    }
   }
+
 
   async broadcastAgentInfo() {
     const message = createMessage(

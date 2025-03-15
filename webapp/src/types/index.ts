@@ -21,7 +21,7 @@ export interface Topic {
   createdAt: Date;
   endTime?: Date;
   votes: Vote[];
-  status: 'active' | 'processing' | 'approved' | 'rejected' | 'error' | 'completed';
+  status: 'active' | 'processing' | 'applying' | 'completed' | 'approved' | 'rejected' | 'error';
   changeType: 'color' | 'font';
   changeValue: string;
   createdBy: string;

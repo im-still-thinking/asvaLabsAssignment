@@ -4,18 +4,14 @@ import OpenAI from 'openai'
 
 dotenv.config()
 
-// Initialize OpenAI client
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 })
 
-// StarCoder configuration
 const HUGGINGFACE_API_URL = 'https://api-inference.huggingface.co/models/bigcode/starcoder2-15b'
 const HUGGINGFACE_API_KEY = process.env.HUGGINGFACE_API_KEY
 
-/**
- * Process votes using LLM to analyze and provide recommendations
- */
+
 async function processVotesWithLLM(votingData) {
   try {
     console.log('Processing votes with LLM:', votingData)
@@ -61,7 +57,6 @@ Format your response as a JSON object with the following structure:
     let result
     
     try {
-      // Extract JSON from the response
       const jsonMatch = content.match(/```json\n([\s\S]*?)\n```/) || content.match(/({[\s\S]*})/)
       const jsonString = jsonMatch ? jsonMatch[1] : content
       result = JSON.parse(jsonString)
@@ -69,7 +64,6 @@ Format your response as a JSON object with the following structure:
       console.error('Error parsing LLM response:', err)
       console.log('Raw response:', content)
       
-      // Fallback to a simple result
       result = {
         summary: 'Failed to parse LLM response',
         yesVotes: 0,
@@ -94,9 +88,7 @@ Format your response as a JSON object with the following structure:
   }
 }
 
-/**
- * Process natural language prompts to extract change requests
- */
+
 async function processPromptWithLLM(prompt) {
   try {
     const response = await openai.chat.completions.create({
@@ -131,9 +123,174 @@ async function processPromptWithLLM(prompt) {
   }
 }
 
-/**
- * Generate code with StarCoder
- */
+
+async function analyzeCodebaseWithLLM(changeRequest, codebaseRepresentation) {
+  try {
+    console.log('Analyzing codebase with LLM...')
+    
+    const prompt = `
+# Codebase Analysis Task
+
+You are an expert code analyst. Your task is to analyze a codebase and determine what changes need to be made to implement a requested change.
+
+## Change Request
+${JSON.stringify(changeRequest, null, 2)}
+
+## Codebase Structure
+${JSON.stringify(codebaseRepresentation.structure, null, 2)}
+
+## Key Files
+${Object.keys(codebaseRepresentation.keyFiles).map(key => `- ${key} (${codebaseRepresentation.keyFiles[key].extension})`).join('\n')}
+
+## Current Settings
+The application uses the following settings in the AppContext:
+- primaryColor: The main color used throughout the application (in hex format, e.g., "#3b82f6")
+- fontFamily: The font family used throughout the application
+
+## Instructions
+Based on the change request and codebase structure, determine:
+1. Which files need to be modified to implement the change
+2. What specific changes need to be made to each file
+3. How application settings should be updated
+
+IMPORTANT: For color changes, you MUST update the "primaryColor" setting with a valid hex color code (e.g., "#FFFF00" for yellow).
+For font changes, you MUST update the "fontFamily" setting with the new font family.
+
+Format your response as a JSON object with the following structure:
+\`\`\`json
+{
+  "filesToModify": [
+    {
+      "path": "path/to/file",
+      "reason": "Explanation of why this file needs to be modified",
+      "changes": "Description of changes needed"
+    }
+  ],
+  "settingsUpdates": {
+    "primaryColor": "#HEXCODE", 
+    "fontFamily": "font name"
+  },
+  "explanation": "Overall explanation of the implementation approach"
+}
+\`\`\`
+`
+
+    const response = await generateWithGPT4oMini(prompt)
+    return parseLLMOutput(response)
+  } catch (error) {
+    console.error('Error analyzing codebase with LLM:', error)
+    throw error
+  }
+}
+
+
+async function generateCodeChangesWithLLM(changeRequest, filesToModify, fileContents) {
+  try {
+    console.log('Generating code changes with LLM...')
+    
+    const prompt = `
+# Code Modification Task
+
+You need to update the website code to implement a change that was approved by users.
+
+## Change Request
+${JSON.stringify(changeRequest, null, 2)}
+
+## Files to Modify
+The following files have been identified as needing modification:
+${filesToModify.map(file => `- ${file.path}: ${file.reason}`).join('\n')}
+
+## Current File Contents
+${Object.entries(fileContents).map(([filePath, content]) => `
+### ${filePath}
+\`\`\`${filePath.split('.').pop()}
+${content}
+\`\`\`
+`).join('\n')}
+
+## Instructions
+Please provide the updated code for each file. For each file, explain what changes you're making and why.
+Be precise and thorough in your modifications, ensuring they correctly implement the requested change.
+Maintain the existing code structure and style as much as possible.
+
+Format your response as a JSON object with the following structure:
+\`\`\`json
+{
+  "files": [
+    {
+      "path": "relative/path/to/file",
+      "content": "full updated content of the file",
+      "explanation": "explanation of changes made"
+    }
+  ]
+}
+\`\`\`
+
+IMPORTANT: The "content" field should contain ONLY the actual code, without any markdown code block syntax.
+`
+
+    try {
+      console.log('Using StarCoder for code generation...')
+      const starcoderOutput = await generateWithStarCoder(prompt)
+      return parseLLMOutput(starcoderOutput)
+    } catch (starcoderError) {
+      console.error('StarCoder failed, falling back to GPT-4o-mini:', starcoderError)
+      const gpt4oOutput = await generateWithGPT4oMini(prompt)
+      return parseLLMOutput(gpt4oOutput)
+    }
+  } catch (error) {
+    console.error('Error generating code changes with LLM:', error)
+    throw error
+  }
+}
+
+
+async function determineSettingsWithLLM(changeRequest, currentSettings, codeChanges) {
+  try {
+    console.log('Determining settings updates with LLM...')
+    
+    const prompt = `
+# Settings Update Task
+
+You are an expert in web application settings. Your task is to determine how application settings should be updated based on a change request.
+
+## Change Request
+${JSON.stringify(changeRequest, null, 2)}
+
+## Current Settings
+${JSON.stringify(currentSettings, null, 2)}
+
+## Code Changes
+The following files were modified:
+${codeChanges.files.map(file => `- ${file.path}: ${file.explanation || 'File was modified'}`).join('\n')}
+
+## Instructions
+Based on the change request and the files that were modified, determine how the application settings should be updated.
+
+IMPORTANT RULES:
+1. For color changes, you MUST update the "primaryColor" setting with a valid hex color code (e.g., "#FFFF00" for yellow).
+2. For font changes, you MUST update the "fontFamily" setting with the new font family.
+3. Return ALL current settings in your response, including those that weren't changed.
+4. Do not add any new settings that don't exist in the current settings.
+
+Format your response as a JSON object with the following structure:
+\`\`\`json
+{
+  "primaryColor": "#HEXCODE",
+  "fontFamily": "font name"
+}
+\`\`\`
+`
+
+    const response = await generateWithGPT4oMini(prompt)
+    return parseLLMOutput(response)
+  } catch (error) {
+    console.error('Error determining settings with LLM:', error)
+    throw error
+  }
+}
+
+
 async function generateWithStarCoder(prompt) {
   try {
     console.log('Generating code with StarCoder...')
@@ -178,9 +335,7 @@ async function generateWithStarCoder(prompt) {
   }
 }
 
-/**
- * Generate code with GPT-4o-mini as a fallback
- */
+
 async function generateWithGPT4oMini(prompt) {
   try {
     console.log('Generating code with GPT-4o-mini...')
@@ -216,27 +371,124 @@ async function generateWithGPT4oMini(prompt) {
   }
 }
 
-/**
- * Parse LLM output to extract JSON
- */
+
 function parseLLMOutput(output) {
   try {
+    console.log('Parsing LLM output...');
+    
     const jsonMatch = output.match(/```json\n([\s\S]*?)\n```/) || 
                       output.match(/```\n([\s\S]*?)\n```/) || 
-                      output.match(/({[\s\S]*})/)
+                      output.match(/{[\s\S]*?}/)
     
+    let jsonString;
     if (jsonMatch) {
-      return JSON.parse(jsonMatch[1])
+      jsonString = jsonMatch[1] || jsonMatch[0];
+    } else {
+      jsonString = output;
     }
     
-    return JSON.parse(output)
+    jsonString = jsonString.replace(/^```json|^```|```$/g, '').trim();
+    
+
+    jsonString = fixTruncatedStrings(jsonString);
+    
+
+    return JSON.parse(jsonString);
   } catch (error) {
-    console.error('Error parsing LLM output:', error)
-    throw new Error('Failed to parse LLM output as JSON')
+    console.error('Error parsing LLM output:', error);
+    console.log('Raw output:', output);
+    
+    try {
+      return extractAndFixJSON(output);
+    } catch (extractError) {
+      console.error('Failed to extract and fix JSON:', extractError);
+      throw new Error('Failed to parse LLM output as JSON');
+    }
   }
 }
 
+
+function fixTruncatedStrings(jsonString) {
+
+  const lines = jsonString.split('\n');
+  const fixedLines = [];
+  
+  for (let line of lines) {
+
+    const quoteCount = (line.match(/"/g) || []).length;
+    
+
+    if (quoteCount % 2 !== 0) {
+      line += '"';
+    }
+    
+    fixedLines.push(line);
+  }
+  
+  return fixedLines.join('\n');
+}
+
+
+function extractAndFixJSON(output) {
+  console.log('Attempting manual JSON extraction...');
+  
+
+  if (output.includes('"files":')) {
+    const filesMatch = output.match(/"files"\s*:\s*\[([\s\S]*?)\]/);
+    if (filesMatch) {
+      const filesContent = filesMatch[1];
+      
+
+      const fileObjects = [];
+      let currentObject = '';
+      let braceCount = 0;
+      let inObject = false;
+      
+      for (let i = 0; i < filesContent.length; i++) {
+        const char = filesContent[i];
+        
+        if (char === '{') {
+          braceCount++;
+          inObject = true;
+        } else if (char === '}') {
+          braceCount--;
+        }
+        
+        if (inObject) {
+          currentObject += char;
+        }
+        
+        if (inObject && braceCount === 0) {
+          try {
+            const fixedObject = fixTruncatedStrings(currentObject);
+            const parsedObject = JSON.parse(fixedObject);
+            fileObjects.push(parsedObject);
+          } catch (e) {
+            console.error('Error parsing file object:', e);
+          }
+          
+          currentObject = '';
+          inObject = false;
+        }
+      }
+      
+      return {
+        files: fileObjects
+      };
+    }
+  }
+  
+  return {
+    files: [],
+    explanation: "Failed to parse LLM output, but created a minimal valid response."
+  };
+}
+
 export {
-  generateWithGPT4oMini, generateWithStarCoder, parseLLMOutput, processPromptWithLLM, processVotesWithLLM
+  analyzeCodebaseWithLLM, determineSettingsWithLLM, generateCodeChangesWithLLM, generateWithGPT4oMini,
+  generateWithStarCoder,
+  parseLLMOutput,
+  processPromptWithLLM,
+  processVotesWithLLM
 }
 

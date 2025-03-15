@@ -81,6 +81,10 @@ export const StatusBadge = memo(({ status }: { status: string }) => {
         return { color: 'bg-blue-100 text-blue-800', text: 'Active' };
       case 'processing':
         return { color: 'bg-yellow-100 text-yellow-800', text: 'Processing' };
+      case 'applying':
+        return { color: 'bg-purple-100 text-purple-800', text: 'Applying' };
+      case 'completed':
+        return { color: 'bg-green-100 text-green-800', text: 'Completed' };
       case 'approved':
         return { color: 'bg-green-100 text-green-800', text: 'Approved' };
       case 'rejected':
@@ -124,6 +128,30 @@ export const StatusMessage = memo(({ status, variant = 'card' }: { status: strin
     ) : (
       <div className="p-3 bg-blue-50 text-blue-700 rounded-md text-center">
         Processing results...
+      </div>
+    );
+  }
+  
+  if (status === 'applying') {
+    return variant === 'card' ? (
+      <div className="text-center text-sm font-medium text-purple-600">
+        Change approved! Applying code changes...
+      </div>
+    ) : (
+      <div className="p-3 bg-purple-50 text-purple-700 rounded-md text-center">
+        Change approved! Applying code changes...
+      </div>
+    );
+  }
+  
+  if (status === 'completed') {
+    return variant === 'card' ? (
+      <div className="text-center text-sm font-medium text-green-600">
+        This change has been successfully applied!
+      </div>
+    ) : (
+      <div className="p-3 bg-green-50 text-green-700 rounded-md text-center">
+        This change has been successfully applied!
       </div>
     );
   }

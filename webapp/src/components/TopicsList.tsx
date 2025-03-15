@@ -27,8 +27,9 @@ const TopicItem = memo(({ topic }: { topic: Topic }) => {
 
   // Memoize status color
   const statusColor = useMemo(() => {
-    return topic.status === 'approved' ? 'green' : 
+    return topic.status === 'approved' || topic.status === 'completed' ? 'green' : 
            topic.status === 'rejected' ? 'red' : 
+           topic.status === 'applying' ? 'purple' :
            settings.primaryColor;
   }, [topic.status, settings.primaryColor]);
 

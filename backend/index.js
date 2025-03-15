@@ -11,22 +11,17 @@ dotenv.config()
 const app = express()
 const PORT = process.env.PORT || 3001
 
-// Create HTTP server
 const server = http.createServer(app)
 
-// Create WebSocket server
 const wss = new WebSocketServer({ server })
 
 app.use(cors())
 app.use(express.json())
 
-// Agent instances
 let voteAgent, policyAgent, codeAgent
 
-// Connected WebSocket clients
 const connectedClients = new Map()
 
-// Mock data storage
 const mockUsers = [
   { id: 'user_1', username: 'user1', followers: 150 },
   { id: 'user_2', username: 'user2', followers: 200 },
@@ -35,20 +30,15 @@ const mockUsers = [
 
 const mockTopics = [];
 
-// Store P2P messages in memory (limited to 20 most recent)
 const p2pMessages = [];
 
-/**
- * Add a P2P message with deduplication and limiting
- */
+
 function addP2PMessage(message) {
-  // Add a unique ID to each message for deduplication
   const messageWithId = {
     ...message,
     id: `${message.type}_${message.timestamp}_${Math.random().toString(36).substring(2, 9)}`
   };
   
-  // Check if a similar message already exists (within last 2 seconds)
   const isDuplicate = p2pMessages.some(existingMsg => 
     existingMsg.type === message.type && 
     existingMsg.content === message.content &&
@@ -57,7 +47,6 @@ function addP2PMessage(message) {
   
   if (!isDuplicate) {
     p2pMessages.push(messageWithId);
-    // Keep only the last 20 messages
     if (p2pMessages.length > 20) {
       p2pMessages.shift();
     }
@@ -67,27 +56,19 @@ function addP2PMessage(message) {
   return false;
 }
 
-/**
- * Send WebSocket message to a specific client
- */
+
 function sendWebSocketMessage(ws, type, payload) {
   if (ws.readyState === 1) { // OPEN
     ws.send(JSON.stringify({ type, payload }));
   }
 }
 
-/**
- * Broadcast WebSocket message to all connected clients
- */
 function broadcastWebSocketMessage(type, payload) {
   for (const client of connectedClients.values()) {
     sendWebSocketMessage(client, type, payload);
   }
 }
 
-/**
- * Send P2P info to a specific client
- */
 function sendP2PInfo(ws) {
   if (!voteAgent || !policyAgent || !codeAgent) return;
   
@@ -104,9 +85,7 @@ function sendP2PInfo(ws) {
   sendWebSocketMessage(ws, 'P2P_INFO', p2pInfo);
 }
 
-/**
- * Broadcast P2P info to all connected clients
- */
+
 function broadcastP2PInfo() {
   if (!voteAgent || !policyAgent || !codeAgent) return;
   
@@ -123,42 +102,107 @@ function broadcastP2PInfo() {
   broadcastWebSocketMessage('P2P_INFO', p2pInfo);
 }
 
-/**
- * Broadcast P2P message to all connected clients
- */
 function broadcastP2PMessage(message) {
-  // Add message to the stored messages if it's not a duplicate
   const added = addP2PMessage(message);
   
-  // Only broadcast if the message was added (not a duplicate)
   if (added) {
     broadcastWebSocketMessage('P2P_INFO', { messages: [message] });
   }
 }
 
-/**
- * Broadcast topic update to all connected clients
- */
 function broadcastTopicUpdate(topic) {
   broadcastWebSocketMessage('TOPIC_UPDATE', topic);
 }
 
-/**
- * Broadcast settings update to all connected clients
- */
 function broadcastSettingsUpdate(settings) {
   broadcastWebSocketMessage('SETTINGS_UPDATE', settings);
 }
 
-// Global settings object
 const globalSettings = {
   primaryColor: '#3b82f6',
   fontFamily: 'Inter, sans-serif',
 };
 
-/**
- * Initialize agents and set up message handlers
- */
+
+function updateTopicStatusFromCodeApplied(data) {
+  console.log('Updating topic status from code applied:', data);
+  
+  const matchingTopics = mockTopics.filter(topic => {
+    const statusMatch = topic.status === 'applying';
+    
+    const typeMatch = topic.changeType.toLowerCase() === (data.changeType || '').toLowerCase();
+    
+    const normalizeValue = (val) => (val || '').toString().toLowerCase().replace(/\s+/g, '');
+    const valueMatch = normalizeValue(topic.changeValue) === normalizeValue(data.changeValue);
+    
+    if (statusMatch && (!typeMatch || !valueMatch)) {
+      console.log('Partial match found:', {
+        topic: {
+          id: topic.id,
+          status: topic.status,
+          changeType: topic.changeType,
+          changeValue: topic.changeValue
+        },
+        message: {
+          changeType: data.changeType,
+          changeValue: data.changeValue
+        },
+        matches: {
+          status: statusMatch,
+          type: typeMatch,
+          value: valueMatch
+        }
+      });
+    }
+    
+    return statusMatch && typeMatch && valueMatch;
+  });
+  
+  console.log('Matching topics found:', matchingTopics.length);
+  
+  for (const topic of matchingTopics) {
+    const topicIndex = mockTopics.findIndex(t => t.id === topic.id);
+    if (topicIndex !== -1) {
+      console.log(`Updating topic ${topic.id} status from ${mockTopics[topicIndex].status} to ${data.success ? 'completed' : 'error'}`);
+      mockTopics[topicIndex].status = data.success ? 'completed' : 'error';
+      broadcastTopicUpdate(mockTopics[topicIndex]);
+      console.log(`Topic status updated and broadcasted`);
+    }
+  }
+  
+  if (matchingTopics.length === 0) {
+    console.log('No matching topics found for CODE_APPLIED message. Message data:', {
+      changeType: data.changeType,
+      changeValue: data.changeValue,
+      success: data.success
+    });
+    
+    const applyingTopics = mockTopics.filter(topic => topic.status === 'applying');
+    if (applyingTopics.length > 0) {
+      console.log('Found topics in "applying" status that did not match exactly:', 
+        applyingTopics.map(t => ({ id: t.id, changeType: t.changeType, changeValue: t.changeValue }))
+      );
+      
+      const mostRecentTopic = applyingTopics.sort((a, b) => 
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      )[0];
+      
+      if (mostRecentTopic) {
+        console.log(`Updating most recent topic ${mostRecentTopic.id} as fallback`);
+        const topicIndex = mockTopics.findIndex(t => t.id === mostRecentTopic.id);
+        if (topicIndex !== -1) {
+          mockTopics[topicIndex].status = data.success ? 'completed' : 'error';
+          broadcastTopicUpdate(mockTopics[topicIndex]);
+          console.log(`Topic status updated and broadcasted (fallback)`);
+        }
+      }
+    }
+  }
+}
+
+global.updateTopicStatusFromCodeApplied = updateTopicStatusFromCodeApplied;
+
+
 async function initializeAgents() {
   try {
     console.log('Initializing agents...');
@@ -172,19 +216,18 @@ async function initializeAgents() {
     codeAgent = await new CodeAgent().init();
     console.log('Code agent initialized');
     
-    // Common handler for all agent messages
     const handleAgentMessage = (agentName) => (message) => {
-      // Filter out noisy messages
       if (message.type === 'agent_info') return;
       
-      // Handle settings update message from code agent
       if (agentName === 'Code Agent' && message.type === MessageTypes.SETTINGS_UPDATE) {
-        // Update global settings from the code agent
         globalSettings.primaryColor = message.data.primaryColor;
         globalSettings.fontFamily = message.data.fontFamily;
         
-        // Broadcast settings update to all WebSocket clients
         broadcastSettingsUpdate(message.data);
+      }
+      
+      if (agentName === 'Code Agent' && message.type === MessageTypes.CODE_APPLIED) {
+        updateTopicStatusFromCodeApplied(message.data);
       }
       
       const p2pMessage = {
@@ -196,7 +239,6 @@ async function initializeAgents() {
       broadcastP2PMessage(p2pMessage);
     };
     
-    // Register wildcard handlers for all agents
     voteAgent.node.registerMessageHandler('*', handleAgentMessage('Vote Agent'));
     policyAgent.node.registerMessageHandler('*', handleAgentMessage('Policy Agent'));
     codeAgent.node.registerMessageHandler('*', handleAgentMessage('Code Agent'));
@@ -208,12 +250,11 @@ async function initializeAgents() {
   }
 }
 
-/**
- * Find user by username
- */
+
 function findUserByUsername(username) {
   return mockUsers.find(user => user.username === username);
 }
+
 
 // API endpoints
 app.post('/api/users/login', (req, res) => {
@@ -235,7 +276,6 @@ app.post('/api/users/login', (req, res) => {
       mockUsers.push(user);
     }
     
-    // Add a login message to P2P messages
     addP2PMessage({
       type: 'user_login',
       content: `User ${username} logged in`,
@@ -299,7 +339,6 @@ app.post('/api/topics/:topicId/vote', (req, res) => {
     
     const topic = mockTopics[topicIndex];
     
-    // Update or add vote
     const existingVoteIndex = topic.votes.findIndex(v => v.userId === userId);
     if (existingVoteIndex !== -1) {
       topic.votes[existingVoteIndex] = { userId, vote, influence };
@@ -326,14 +365,13 @@ app.post('/api/votes', async (req, res) => {
     
     const voteSummary = await voteAgent.processVotes(votingData);
     
-    // Update topic status if found
     if (votingData.topicId) {
       const topicIndex = mockTopics.findIndex(topic => topic.id === votingData.topicId);
       
       if (topicIndex !== -1) {
         const approved = voteSummary.recommendation === 'approve';
         
-        mockTopics[topicIndex].status = approved ? 'approved' : 'rejected';
+        mockTopics[topicIndex].status = approved ? 'applying' : 'rejected';
         mockTopics[topicIndex].endTime = new Date();
         
         broadcastTopicUpdate(mockTopics[topicIndex]);
@@ -341,7 +379,6 @@ app.post('/api/votes', async (req, res) => {
       }
     }
     
-    // Add a result property to match frontend expectations
     const result = {
       ...voteSummary,
       result: {
@@ -375,7 +412,7 @@ app.post('/api/interpret', async (req, res) => {
   }
 });
 
-// WebSocket connection handler
+
 wss.on('connection', (ws) => {
   console.log('Client connected to WebSocket');
   
@@ -407,13 +444,13 @@ wss.on('connection', (ws) => {
   });
 });
 
-// Start server
+
 server.listen(PORT, async () => {
   console.log(`Server running on port ${PORT}`);
   await initializeAgents();
 });
 
-// Graceful shutdown
+
 process.on('SIGINT', async () => {
   console.log('Shutting down...');
   
