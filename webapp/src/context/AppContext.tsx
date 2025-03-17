@@ -58,9 +58,6 @@ const defaultP2PInfo: P2PInfo = {
   messages: [],
 };
 
-/**
- * API service for making HTTP requests
- */
 const apiService = {
   async get<T>(url: string): Promise<T> {
     const response = await fetch(url);
@@ -95,7 +92,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const socketRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Memoized message handlers for WebSocket messages
   const messageHandlers = useMemo(() => ({
     [WS_MESSAGE_TYPES.P2P_INFO]: (payload: any) => {
       if (payload.peers) {
@@ -424,7 +420,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   }, [createTopic, currentUser]);
 
-  // Memoize context value to prevent unnecessary re-renders
   const contextValue = useMemo(() => ({
     currentUser,
     topics,

@@ -19,7 +19,6 @@ function VotingCard({ topic }: VotingCardProps) {
   const [elapsedTime, setElapsedTime] = useState<number>(0);
   const [maxTimePercentage, setMaxTimePercentage] = useState<number>(100);
 
-  // Memoize existing vote check
   const existingVote = useMemo(() => 
     topic.votes.find(v => v.userId === currentUser?.id),
     [topic.votes, currentUser?.id]
@@ -49,7 +48,6 @@ function VotingCard({ topic }: VotingCardProps) {
     return () => clearInterval(interval);
   }, [topic.createdAt, topic.status, votingConfig.MAX_VOTING_TIME]);
 
-  // Memoize vote counts and calculations
   const voteStats = useMemo(() => {
     const yesVotes = topic.votes.filter((v) => v.vote === 'yes').length;
     const noVotes = topic.votes.filter((v) => v.vote === 'no').length;
@@ -68,13 +66,11 @@ function VotingCard({ topic }: VotingCardProps) {
     };
   }, [topic.votes, votingConfig.MIN_VOTES_THRESHOLD, votingConfig.APPROVAL_PERCENTAGE]);
 
-  // Memoize formatted date
   const formattedDate = useMemo(() => {
     const d = new Date(topic.createdAt);
     return d.toLocaleString();
   }, [topic.createdAt]);
 
-  // Memoize time display
   const timeDisplay = useMemo(() => {
     const minutes = Math.floor(elapsedTime / 60000);
     const seconds = Math.floor((elapsedTime % 60000) / 1000);

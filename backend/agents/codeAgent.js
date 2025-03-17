@@ -6,13 +6,11 @@ class CodeAgent {
   constructor() {
     this.node = new P2PNode({ agentType: 'code' })
     
-    // Initialize settings based on allowed changes
     this.globalSettings = {
       primaryColor: '#3b82f6',
       fontFamily: 'Inter, sans-serif'
     }
     
-    // Create settings map from allowed changes
     this.settingsMap = {
       'color': 'primaryColor',
       'font': 'fontFamily'

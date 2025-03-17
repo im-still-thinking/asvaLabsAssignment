@@ -40,9 +40,6 @@ const mockTopics = [];
 // Store P2P messages in memory (limited to 20 most recent)
 const p2pMessages = [];
 
-/**
- * Add a P2P message with deduplication and limiting
- */
 function addP2PMessage(message) {
   // Add a unique ID to each message for deduplication
   const messageWithId = {
@@ -69,18 +66,12 @@ function addP2PMessage(message) {
   return false;
 }
 
-/**
- * Send WebSocket message to a specific client
- */
 function sendWebSocketMessage(ws, type, payload) {
   if (ws.readyState === 1) { // OPEN
     ws.send(JSON.stringify({ type, payload }));
   }
 }
 
-/**
- * Broadcast WebSocket message to all connected clients
- */
 function broadcastWebSocketMessage(type, payload) {
   for (const client of connectedClients.values()) {
     sendWebSocketMessage(client, type, payload);
