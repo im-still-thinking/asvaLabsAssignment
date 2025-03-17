@@ -5,6 +5,8 @@ import http from 'http'
 import { WebSocketServer } from 'ws'
 import { CodeAgent, PolicyAgent, VoteAgent } from './agents/index.js'
 import { MessageTypes } from './p2p/index.js'
+import dbService from './services/dbService.js'
+import sessionService from './services/sessionService.js'
 
 dotenv.config()
 
@@ -249,15 +251,61 @@ app.post('/api/users/login', (req, res) => {
   }
 });
 
-app.get('/api/topics', (req, res) => {
-  res.json(mockTopics);
+app.get('/api/topics', async (req, res) => {
+  try {
+    // Get topics from MongoDB if available
+    const sessions = await sessionService.getAllSessions();
+    
+    // If there are sessions in MongoDB, convert them to the expected format
+    if (sessions && sessions.length > 0) {
+      const topics = sessions.map(session => ({
+        id: session.topicId,
+        title: session.title,
+        changeType: session.changeType,
+        changeValue: session.changeValue,
+        status: session.status,
+        createdAt: session.createdAt,
+        votes: session.votes,
+        endTime: session.endedAt
+      }));
+      
+      // Sync mockTopics with MongoDB data to ensure consistency
+      mockTopics.length = 0; // Clear the array
+      mockTopics.push(...topics); // Add all topics from MongoDB
+      
+      res.json(topics);
+    } else {
+      // Fall back to mock topics if no sessions are found
+      res.json(mockTopics);
+    }
+  } catch (error) {
+    console.error('Error fetching topics:', error);
+    // Fall back to mock topics in case of error
+    res.json(mockTopics);
+  }
+});
+
+app.get('/api/sessions/:topicId', async (req, res) => {
+  try {
+    const { topicId } = req.params;
+    const session = await sessionService.getSessionByTopicId(topicId);
+    
+    if (!session) {
+      return res.status(404).json({ error: 'Session not found' });
+    }
+    
+    res.json(session);
+  } catch (error) {
+    console.error('Error fetching session:', error);
+    res.status(500).json({ error: 'Failed to fetch session' });
+  }
 });
 
 app.get('/api/settings', (req, res) => {
   res.json(globalSettings);
 });
 
-app.post('/api/topics', (req, res) => {
+app.post('/api/topics', async (req, res) => {
   try {
     const topicData = req.body;
     
@@ -274,6 +322,17 @@ app.post('/api/topics', (req, res) => {
     };
     
     mockTopics.push(newTopic);
+    
+    // Create a session for this topic
+    await sessionService.createSession(newTopic);
+    
+    // Add a message to the session
+    await sessionService.addMessage(newTopic.id, {
+      sender: 'system',
+      content: `Topic created: ${newTopic.title}`,
+      timestamp: new Date()
+    });
+    
     broadcastTopicUpdate(newTopic);
     res.json(newTopic);
   } catch (error) {
@@ -282,7 +341,7 @@ app.post('/api/topics', (req, res) => {
   }
 });
 
-app.post('/api/topics/:topicId/vote', (req, res) => {
+app.post('/api/topics/:topicId/vote', async (req, res) => {
   try {
     const { topicId } = req.params;
     const { userId, vote, influence } = req.body;
@@ -291,12 +350,36 @@ app.post('/api/topics/:topicId/vote', (req, res) => {
       return res.status(400).json({ error: 'Invalid vote data' });
     }
     
-    const topicIndex = mockTopics.findIndex(topic => topic.id === topicId);
-    if (topicIndex === -1) {
-      return res.status(404).json({ error: 'Topic not found' });
-    }
+    // First check in mockTopics
+    let topicIndex = mockTopics.findIndex(topic => topic.id === topicId);
+    let topic;
     
-    const topic = mockTopics[topicIndex];
+    // If not found in mockTopics, check MongoDB
+    if (topicIndex === -1) {
+      const session = await sessionService.getSessionByTopicId(topicId);
+      
+      if (!session) {
+        return res.status(404).json({ error: 'Topic not found' });
+      }
+      
+      // Convert session to topic format
+      topic = {
+        id: session.topicId,
+        title: session.title,
+        changeType: session.changeType,
+        changeValue: session.changeValue,
+        status: session.status,
+        createdAt: session.createdAt,
+        votes: session.votes || [],
+        endTime: session.endedAt
+      };
+      
+      // Add to mockTopics for future reference
+      mockTopics.push(topic);
+      topicIndex = mockTopics.length - 1;
+    } else {
+      topic = mockTopics[topicIndex];
+    }
     
     // Update or add vote
     const existingVoteIndex = topic.votes.findIndex(v => v.userId === userId);
@@ -307,6 +390,10 @@ app.post('/api/topics/:topicId/vote', (req, res) => {
     }
     
     mockTopics[topicIndex] = topic;
+    
+    // Add the vote to the session
+    await sessionService.addVote(topicId, { userId, vote, influence });
+    
     broadcastTopicUpdate(topic);
     res.json(topic);
   } catch (error) {
@@ -327,13 +414,44 @@ app.post('/api/votes', async (req, res) => {
     
     // Update topic status if found
     if (votingData.topicId) {
-      const topicIndex = mockTopics.findIndex(topic => topic.id === votingData.topicId);
+      let topicIndex = mockTopics.findIndex(topic => topic.id === votingData.topicId);
+      let topic;
+      
+      // If not found in mockTopics, check MongoDB
+      if (topicIndex === -1) {
+        const session = await sessionService.getSessionByTopicId(votingData.topicId);
+        
+        if (session) {
+          // Convert session to topic format
+          topic = {
+            id: session.topicId,
+            title: session.title,
+            changeType: session.changeType,
+            changeValue: session.changeValue,
+            status: session.status,
+            createdAt: session.createdAt,
+            votes: session.votes || [],
+            endTime: session.endedAt
+          };
+          
+          // Add to mockTopics for future reference
+          mockTopics.push(topic);
+          topicIndex = mockTopics.length - 1;
+        }
+      }
       
       if (topicIndex !== -1) {
         const approved = voteSummary.recommendation === 'approve';
         
         mockTopics[topicIndex].status = approved ? 'approved' : 'rejected';
         mockTopics[topicIndex].endTime = new Date();
+        
+        // Update the session status
+        await sessionService.updateSessionStatus(
+          votingData.topicId, 
+          approved ? 'approved' : 'rejected',
+          new Date()
+        );
         
         broadcastTopicUpdate(mockTopics[topicIndex]);
         broadcastP2PInfo();
@@ -406,9 +524,31 @@ wss.on('connection', (ws) => {
   });
 });
 
+// Initialize database connections
+async function initializeDatabases() {
+  try {
+    // Connect to MongoDB
+    await dbService.connect();
+    
+    // Connect to Redis
+    await sessionService.connect();
+    
+    console.log('Database connections established');
+    return true;
+  } catch (error) {
+    console.error('Failed to initialize databases:', error);
+    return false;
+  }
+}
+
 // Start server
 server.listen(PORT, async () => {
   console.log(`Server running on port ${PORT}`);
+  
+  // Initialize databases
+  await initializeDatabases();
+  
+  // Initialize agents
   await initializeAgents();
 });
 
@@ -419,6 +559,10 @@ process.on('SIGINT', async () => {
   if (voteAgent) await voteAgent.stop();
   if (policyAgent) await policyAgent.stop();
   if (codeAgent) await codeAgent.stop();
+  
+  // Close database connections
+  await dbService.disconnect();
+  await sessionService.disconnect();
   
   process.exit(0);
 }); 

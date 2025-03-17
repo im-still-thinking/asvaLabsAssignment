@@ -1,6 +1,7 @@
 import { MessageTypes, P2PNode, createMessage } from '../p2p/index.js'
 import { processPromptWithLLM, processVotesWithLLM } from '../services/llmService.js'
 import { ALLOWED_CHANGES } from '../services/policyEngine.js'
+import sessionService from '../services/sessionService.js'
 
 class VoteAgent {
   constructor() {
@@ -30,6 +31,27 @@ class VoteAgent {
 
   async handlePolicyDecision(message) {
     console.log('Received policy decision:', message.data)
+    
+    // Log the policy decision to the session if it contains a topicId
+    if (message.data.voteSummary && message.data.voteSummary.topicId) {
+      const topicId = message.data.voteSummary.topicId;
+      
+      // Add the decision to the session
+      await sessionService.addDecision(topicId, {
+        type: 'policy_decision',
+        value: message.data,
+        agent: 'policy'
+      });
+      
+      // If this is a final decision, update the session with the final decision
+      if (message.data.approved !== undefined) {
+        await sessionService.setFinalDecision(topicId, {
+          approved: message.data.approved,
+          justification: message.data.justification,
+          summary: message.data.summary
+        });
+      }
+    }
   }
 
   async broadcastAgentInfo() {
@@ -47,6 +69,25 @@ class VoteAgent {
     
     const voteSummary = await processVotesWithLLM(votingData)
     
+    // Add topicId to the vote summary for tracking
+    if (votingData.topicId) {
+      voteSummary.topicId = votingData.topicId;
+      
+      // Log the vote summary to the session
+      await sessionService.addDecision(votingData.topicId, {
+        type: 'vote_summary',
+        value: voteSummary,
+        agent: 'vote'
+      });
+      
+      // Log all votes to the session
+      if (votingData.votes && votingData.votes.length > 0) {
+        for (const vote of votingData.votes) {
+          await sessionService.addVote(votingData.topicId, vote);
+        }
+      }
+    }
+    
     if (this.policyAgentPeerId) {
       const message = createMessage(
         MessageTypes.VOTE_SUMMARY,
@@ -56,6 +97,16 @@ class VoteAgent {
       
       await this.node.sendMessage(this.policyAgentPeerId, message)
       console.log('Vote summary sent to policy agent')
+      
+      // Log the node interaction
+      if (votingData.topicId) {
+        await sessionService.addNodeInteraction(votingData.topicId, {
+          type: MessageTypes.VOTE_SUMMARY,
+          sender: this.node.node.peerId.toString(),
+          receiver: this.policyAgentPeerId,
+          data: voteSummary
+        });
+      }
     } else {
       console.log('Policy agent not discovered yet, cannot send vote summary')
     }
@@ -104,12 +155,17 @@ class VoteAgent {
         ? `${interpretation.title} (${interpretation.interpretation})`
         : interpretation.title
 
-      return {
+      const result = {
         title: title,
         changeType: interpretation.changeType,
         changeValue: interpretation.changeValue,
         description: `${prompt}\n\nInterpreted as: ${interpretation.interpretation || 'Direct change'}`
-      }
+      };
+      
+      // Store the interpretation in the metadata for later use when creating a session
+      result.interpretation = interpretation;
+      
+      return result;
     } catch (error) {
       console.error('Error in vote agent interpretation:', error)
       throw error // Propagate the error to be handled by the API
