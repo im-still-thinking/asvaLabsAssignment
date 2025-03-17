@@ -1,6 +1,5 @@
 import dotenv from 'dotenv'
 import OpenAI from 'openai'
-import { parseLLMOutput } from './llmService.js'
 
 dotenv.config()
 
@@ -8,9 +7,29 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 })
 
+// Define allowed changes - this drives the prompt generation
+const ALLOWED_CHANGES = [
+  {
+    type: 'color',
+    description: 'Change the primary color using hex color codes (e.g., #FF0000)',
+    validation: 'Must be a valid hex color code'
+  },
+  {
+    type: 'font',
+    description: 'Change the font family (e.g., Arial, Roboto)',
+    validation: 'Must be a web-safe font or Google Font'
+  }
+  // Add new changes here to whitelist them
+]
+
 async function evaluateWithPolicyEngine(voteSummary) {
   try {
     console.log('Evaluating with policy engine:', voteSummary)
+
+    // Generate the allowed changes section of the prompt
+    const allowedChangesText = ALLOWED_CHANGES
+      .map(change => `- ${change.type}: ${change.description}\n  Validation: ${change.validation}`)
+      .join('\n')
 
     const prompt = `
 You are a policy engine for a website that allows users to vote on changing the website's appearance.
@@ -19,24 +38,22 @@ You need to evaluate a vote summary and decide whether to approve or reject the 
 Here is the vote summary:
 ${JSON.stringify(voteSummary, null, 2)}
 
+ALLOWED CHANGES:
+${allowedChangesText}
+
 Policy rules:
-1. Changes should be approved if they have more weighted yes votes than no votes
-2. Changes should be rejected if they might harm user experience
-3. For color changes, ensure the color is web-safe and accessible
-4. For font changes, ensure the font is common and readable
+1. ONLY the changes listed above are allowed - reject any other change types immediately
+2. Changes should be approved if they have more weighted yes votes than no votes
+3. Changes should be rejected if they might harm user experience
+4. Each change type must meet its specific validation criteria
 
-Please evaluate this vote and provide:
-1. Your decision (approve or reject)
-2. A justification for your decision
-3. If approved, a summary of the changes to be made
-
-Format your response as a JSON object with the following structure:
+Please evaluate this vote and provide your decision in the following JSON format:
 {
-  "approved": true or false,
-  "justification": "string",
-  "changeType": "color" or "font",
-  "changeValue": "string",
-  "summary": "string"
+  "approved": boolean,
+  "justification": "string explaining your decision",
+  "changeType": "string - the type of change requested",
+  "changeValue": "string - the new value to apply",
+  "summary": "string - brief summary of the change"
 }
 `
 
@@ -50,25 +67,14 @@ Format your response as a JSON object with the following structure:
       max_tokens: 1000
     })
 
-    const content = response.choices[0].message.content
-    let result
-
-    try {
-      result = parseLLMOutput(content)
-    } catch (err) {
-      console.error('Error parsing LLM response:', err)
-      console.log('Raw response:', content)
-
-      result = {
-        approved: false,
-        justification: 'Error in processing policy decision',
-        changeType: voteSummary.changeType,
-        changeValue: voteSummary.changeValue,
-        summary: 'Failed to evaluate policy'
-      }
-    }
-
+    const result = JSON.parse(response.choices[0].message.content)
     result.voteSummary = voteSummary
+
+    // Additional validation - ensure the change type is actually allowed
+    if (!ALLOWED_CHANGES.some(change => change.type === result.changeType)) {
+      result.approved = false
+      result.justification = `Change type "${result.changeType}" is not in the allowed changes list`
+    }
 
     return result
   } catch (error) {
@@ -77,61 +83,6 @@ Format your response as a JSON object with the following structure:
   }
 }
 
-// This function is redundant with the LLM-based policy engine
-// and can be removed if not needed for fallback purposes
-export async function evaluatePolicy(voteSummary) {
-  try {
-    console.log('Evaluating policy for:', voteSummary)
+// Export both the function and the allowed changes list
+export { ALLOWED_CHANGES, evaluateWithPolicyEngine }
 
-    const allowedChangeTypes = ['color', 'font']
-
-    if (!allowedChangeTypes.includes(voteSummary.changeType)) {
-      return {
-        approved: false,
-        reason: `Change type "${voteSummary.changeType}" is not allowed. Only color and font changes are permitted.`,
-        voteSummary
-      }
-    }
-
-    if (voteSummary.changeType === 'color') {
-      const isValidHex = /^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/.test(voteSummary.changeValue)
-      if (!isValidHex) {
-        return {
-          approved: false,
-          reason: `Invalid color format. Must be a hex color code (e.g., #FF0000).`,
-          voteSummary
-        }
-      }
-    }
-
-    if (voteSummary.changeType === 'font') {
-      const hasFallback = voteSummary.changeValue.includes(',')
-      if (!hasFallback) {
-        voteSummary.changeValue = `${voteSummary.changeValue}, sans-serif`
-      }
-    }
-
-    if (voteSummary.recommendation === 'approve') {
-      return {
-        approved: true,
-        reason: 'Change approved based on voting results and policy compliance.',
-        voteSummary
-      }
-    } else {
-      return {
-        approved: false,
-        reason: 'Change rejected based on voting results.',
-        voteSummary
-      }
-    }
-  } catch (error) {
-    console.error('Error in policy evaluation:', error)
-    return {
-      approved: false,
-      reason: 'Error in policy evaluation: ' + error.message,
-      voteSummary
-    }
-  }
-}
-
-export { evaluateWithPolicyEngine }

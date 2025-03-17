@@ -1,18 +1,25 @@
 import { MessageTypes, P2PNode, createMessage } from '../p2p/index.js'
-import { generateCode } from '../services/codeGenerator.js'
+import { ALLOWED_CHANGES } from '../services/policyEngine.js'
 
 class CodeAgent {
   constructor() {
     this.node = new P2PNode({ agentType: 'code' })
+    
+    // Initialize settings based on allowed changes
     this.globalSettings = {
       primaryColor: '#3b82f6',
-      fontFamily: 'Inter, sans-serif',
+      fontFamily: 'Inter, sans-serif'
+    }
+    
+    // Create settings map from allowed changes
+    this.settingsMap = {
+      'color': 'primaryColor',
+      'font': 'fontFamily'
     }
   }
 
   async init() {
     await this.node.init()
-    
     this.node.registerMessageHandler(MessageTypes.CODE_CHANGE, this.handleCodeChange.bind(this))
     
     setTimeout(() => {
@@ -25,17 +32,22 @@ class CodeAgent {
   async handleCodeChange(message) {
     console.log('Received code change request:', message.data)
     
-    const result = await generateCode(message.data)
+    const { changeType, changeValue } = message.data
     
-    // Update in-memory settings regardless of code generation success
-    // This ensures the UI updates even if file changes fail
-    if (message.data.changeType === 'color') {
-      this.globalSettings.primaryColor = message.data.changeValue
-    } else if (message.data.changeType === 'font') {
-      this.globalSettings.fontFamily = message.data.changeValue
+    // Verify this is an allowed change type
+    const allowedChange = ALLOWED_CHANGES.find(change => change.type === changeType)
+    if (!allowedChange) {
+      console.error('Attempted change type not allowed:', changeType)
+      return { success: false, error: 'Change type not allowed' }
     }
     
-    // Broadcast settings update to all clients via a special message type
+    // Get the settings key for this change type
+    const settingKey = this.settingsMap[changeType] || changeType
+    
+    // Update the setting
+    this.globalSettings[settingKey] = changeValue
+    
+    // Broadcast settings update to all clients
     const settingsUpdateMessage = createMessage(
       MessageTypes.SETTINGS_UPDATE,
       this.globalSettings,
@@ -43,17 +55,16 @@ class CodeAgent {
     )
     
     await this.node.broadcastMessage(settingsUpdateMessage)
-    console.log('Settings update message broadcasted')
+    console.log('Settings update message broadcasted:', this.globalSettings)
 
     // Broadcast code applied message
     const codeAppliedMessage = createMessage(
       MessageTypes.CODE_APPLIED,
       {
-        changeType: message.data.changeType,
-        changeValue: message.data.changeValue,
-        files: result.files,
-        success: result.success,
-        settings: this.globalSettings // Include settings in the code applied message
+        changeType,
+        changeValue,
+        success: true,
+        settings: this.globalSettings
       },
       this.node.node.peerId.toString()
     )
@@ -61,7 +72,7 @@ class CodeAgent {
     await this.node.broadcastMessage(codeAppliedMessage)
     console.log('Code applied message broadcasted')
     
-    return result
+    return { success: true, settings: this.globalSettings }
   }
 
   async broadcastAgentInfo() {

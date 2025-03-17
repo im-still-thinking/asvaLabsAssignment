@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 :root {
-  --primary-color: #800080; /* Changed to purple */
+  --primary-color: #ff0000; /* Changed to red */
   --font-family: 'Arial, sans-serif';
 }
 

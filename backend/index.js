@@ -180,11 +180,10 @@ async function initializeAgents() {
       // Handle settings update message from code agent
       if (agentName === 'Code Agent' && message.type === MessageTypes.SETTINGS_UPDATE) {
         // Update global settings from the code agent
-        globalSettings.primaryColor = message.data.primaryColor;
-        globalSettings.fontFamily = message.data.fontFamily;
+        Object.assign(globalSettings, message.data);
         
         // Broadcast settings update to all WebSocket clients
-        broadcastSettingsUpdate(message.data);
+        broadcastSettingsUpdate(globalSettings);
       }
       
       const p2pMessage = {
